@@ -113,6 +113,9 @@ In `RADIO_ConfigureSquelchAndOutputPower`, scales the squelch-open thresholds re
 ### `ENABLE_FASTER_CHANNEL_SCAN` (default: 1)
 Shortens the pause between scan steps to a fixed 90ms for both frequency scanning (down from the stock 100ms) and memory-channel scanning (down from the stock 200ms), via `gScanPauseDelayIn_10ms = 9` in `app/chFrScanner.c`, making channel scanning noticeably faster at the risk of missing brief signals.
 
+### `ENABLE_BACKLIGHT_ON_RX` (no `?=` default in the top options block — unlike every other flag on this page, so it's unset/empty, i.e. off, unless passed explicitly as `make ENABLE_BACKLIGHT_ON_RX=1`)
+Only appears in the `ifeq`/`CFLAGS` block; no `#ifdef ENABLE_BACKLIGHT_ON_RX` guard exists anywhere in the current source tree, so the flag currently has no effect on compiled behavior even when forced to `1`.
+
 ### `ENABLE_RSSI_BAR` (default: 1)
 Replaces the small antenna/signal-bar icon in the VFO frequency line with a full-width graphical RSSI bar shown on the center status line while receiving (`DisplayRSSIBar`), instead of the compact multi-bar antenna glyph used otherwise.
 
@@ -121,6 +124,12 @@ Adds a "MIC" setting and a microphone/audio-level bar graph (`UI_DisplayAudioBar
 
 ### `ENABLE_COPY_CHAN_TO_VFO` (default: 1)
 Changes what the F+1 ("1 A/B") key does while a memory channel is selected: instead of being a no-op, it copies that channel's configuration into the corresponding frequency-mode VFO slot and switches the display to frequency mode on that VFO (guarded against firing during an active scan or when the VFO is closed).
+
+### `ENABLE_SINGLE_VFO_CHAN` (no `?=` default in the top options block — unlike every other flag on this page, so it's unset/empty, i.e. off, unless passed explicitly as `make ENABLE_SINGLE_VFO_CHAN=1`)
+Only appears in the `ifeq`/`CFLAGS` block; no `#ifdef ENABLE_SINGLE_VFO_CHAN` guard exists anywhere in the current source tree, so the flag currently has no effect on compiled behavior even when forced to `1`.
+
+### `ENABLE_BAND_SCOPE` (no `?=` default in the top options block — unlike every other flag on this page, so it's unset/empty, i.e. off, unless passed explicitly as `make ENABLE_BAND_SCOPE=1`)
+Only appears in the `ifeq`/`CFLAGS` block; no `#ifdef ENABLE_BAND_SCOPE` guard exists anywhere in the current source tree, so the flag currently has no effect on compiled behavior even when forced to `1`. Its apparent target is `FUNCTION_BAND_SCOPE` (`functions.h`), an enum value explicitly commented `bandscope mode (panadpter/spectrum) .. not yet implemented` and bound to a no-op handler (`[FUNCTION_BAND_SCOPE] = &FUNCTION_NOP` in `app/app.c`) — the flag was seemingly meant to gate that stub feature but was never actually wired to it.
 
 ### `ENABLE_REDUCE_LOW_MID_TX_POWER` (default: 0)
 Further reduces the calculated TX power register values when the output-power setting is LOW or MID: LOW power is divided by 5 and MID power by 3 (on top of the normal power curve), lowering actual transmit power below the standard LOW/MID levels.
@@ -311,9 +320,12 @@ identified independently, out of scope for this pass) and remains N/A.
 | `ENABLE_AM_FIX` | 1 | +652 | measured directly |
 | `ENABLE_SQUELCH_MORE_SENSITIVE` | 1 | +92 | measured directly |
 | `ENABLE_FASTER_CHANNEL_SCAN` | 1 | +0 | measured directly |
+| `ENABLE_BACKLIGHT_ON_RX` | (unset) | +0 | not independently measured (no `?=` default to toggle against); +0 expected since no `#ifdef` anywhere consumes this macro - see above |
 | `ENABLE_RSSI_BAR` | 1 | +508 | measured directly |
 | `ENABLE_AUDIO_BAR` | 0 | ~+432 (est.) | enabling overflowed the baseline by 344 bytes; cost estimated as overflow + 88 bytes headroom |
 | `ENABLE_COPY_CHAN_TO_VFO` | 1 | +128 | measured directly |
+| `ENABLE_SINGLE_VFO_CHAN` | (unset) | +0 | not independently measured (no `?=` default to toggle against); +0 expected since no `#ifdef` anywhere consumes this macro - see above |
+| `ENABLE_BAND_SCOPE` | (unset) | +0 | not independently measured (no `?=` default to toggle against); +0 expected since no `#ifdef` anywhere consumes this macro - see above |
 | `ENABLE_REDUCE_LOW_MID_TX_POWER` | 0 | +0 | measured directly |
 | `ENABLE_BYP_RAW_DEMODULATORS` | 1 | +32 | measured directly |
 | `ENABLE_BLMIN_TMP_OFF` | 0 | +76 | measured directly |
