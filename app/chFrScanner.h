@@ -20,7 +20,7 @@ void CHFRSCANNER_Stop(void);
 void CHFRSCANNER_Start(const bool storeBackupSettings, const int8_t scan_direction);
 void CHFRSCANNER_ContinueScanning(void);
 
-#if defined(ENABLE_FEAT_F4HWN_RESUME_STATE) || defined(ENABLE_SCAN_RANGES)
+#ifdef ENABLE_SCAN_RANGES
     void CHFRSCANNER_ScanRange(void);
 #endif
 
