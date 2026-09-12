@@ -385,6 +385,7 @@ void ACTION_FM(void)
     }
 }
 
+#ifndef ENABLE_FMRADIO_MINIMIZED
 static void ACTION_Scan_FM(bool bRestart)
 {
     if (FUNCTION_IsRx())
@@ -422,8 +423,37 @@ static void ACTION_Scan_FM(bool bRestart)
 #ifdef ENABLE_VOICE
     gAnotherVoiceID = VOICE_ID_SCANNING_BEGIN;
 #endif
+}
+#else
+static void ACTION_Scan_FM(bool bRestart)
+{
+    if (FUNCTION_IsRx())
+        return;
+
+    GUI_SelectNextDisplay(DISPLAY_FM);
+
+    gMonitor = false;
+
+    if (gFM_ScanState != FM_SCAN_OFF) {
+        FM_PlayAndUpdate();
+
+#ifdef ENABLE_VOICE
+        gAnotherVoiceID = VOICE_ID_SCANNING_STOP;
+#endif
+        return;
+    }
+
+    const uint16_t freq = bRestart ? BK1080_GetFreqLoLimit(gEeprom.FM_Band) : gEeprom.FM_FrequencyPlaying;
+
+    BK1080_GetFrequencyDeviation(freq);
+    FM_Tune(freq, 1, bRestart);
+
+#ifdef ENABLE_VOICE
+    gAnotherVoiceID = VOICE_ID_SCANNING_BEGIN;
+#endif
 
 }
+#endif
 
 #endif
 
