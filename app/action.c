@@ -242,6 +242,7 @@ void ACTION_Scan(bool bRestart)
         gScheduleScanListen    = false;
     } else {
         #ifdef ENABLE_FEAT_F4HWN_RESUME_STATE
+        #ifdef ENABLE_SCAN_RANGES
         if(gScanRangeStart == 0) // No ScanRange
         {
             gEeprom.CURRENT_STATE = 1;
@@ -250,6 +251,9 @@ void ACTION_Scan(bool bRestart)
         {
             gEeprom.CURRENT_STATE = 2;
         }
+        #else
+        gEeprom.CURRENT_STATE = 1; // ScanRange feature not built - always a plain scan
+        #endif
         SETTINGS_WriteCurrentState();
         #endif
         // start scanning
@@ -386,6 +390,14 @@ void ACTION_FM(void)
 
 static void ACTION_Scan_FM(bool bRestart)
 {
+#ifdef ENABLE_FMRADIO_MINIMIZED
+    // bRestart used to trigger a full-band auto-scan that populated the
+    // channel-memory presets; that whole subsystem (presets/MR mode/auto-scan)
+    // has been removed, so this is now always a plain seek-scan from the
+    // current frequency.
+    (void)bRestart;
+#endif
+
     if (FUNCTION_IsRx())
         return;
 
@@ -402,6 +414,9 @@ static void ACTION_Scan_FM(bool bRestart)
         return;
     }
 
+#ifdef ENABLE_FMRADIO_MINIMIZED
+    const uint16_t freq = gEeprom.FM_FrequencyPlaying;
+#else
     uint16_t freq;
 
     if (bRestart) {
@@ -414,9 +429,14 @@ static void ACTION_Scan_FM(bool bRestart)
         gFM_ChannelPosition = 0;
         freq = gEeprom.FM_FrequencyPlaying;
     }
+#endif
 
     BK1080_GetFrequencyDeviation(freq);
+#ifdef ENABLE_FMRADIO_MINIMIZED
+    FM_Tune(freq, 1, false);
+#else
     FM_Tune(freq, 1, bRestart);
+#endif
 
 #ifdef ENABLE_VOICE
     gAnotherVoiceID = VOICE_ID_SCANNING_BEGIN;
@@ -543,55 +563,28 @@ void ACTION_Ptt(void)
 
 void ACTION_Wn(void)
 {
+    // RX and TX used to be separate, near-identical branches here differing only
+    // in which VFO they touched. Note this preserves the pre-existing behavior
+    // exactly, including that the narrower-mode bump below was (and still is)
+    // only ever applied on the RX path.
+    const bool  isRx = FUNCTION_IsRx();
+    VFO_Info_t *pVfo = isRx ? gRxVfo : gTxVfo;
+
+    pVfo->CHANNEL_BANDWIDTH = (pVfo->CHANNEL_BANDWIDTH == 0) ? 1 : 0;
+
     #ifdef ENABLE_FEAT_F4HWN_NARROWER
-        bool narrower = 0;
-        if (FUNCTION_IsRx())
-        {
-            gRxVfo->CHANNEL_BANDWIDTH = (gRxVfo->CHANNEL_BANDWIDTH == 0) ? 1: 0;
-            if(gRxVfo->CHANNEL_BANDWIDTH == BANDWIDTH_NARROW && gSetting_set_nfm == 1)
-            {
-                narrower = 1;
-            }
-
-            #ifdef ENABLE_AM_FIX
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH + narrower, true);
-            #else
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH + narrower, false);
-            #endif
-        }
-        else
-        {
-            gTxVfo->CHANNEL_BANDWIDTH = (gTxVfo->CHANNEL_BANDWIDTH == 0) ? 1: 0;
-            if(gTxVfo->CHANNEL_BANDWIDTH == BANDWIDTH_NARROW && gSetting_set_nfm == 1)
-            {
-                narrower = 1;
-            }
-
-            #ifdef ENABLE_AM_FIX
-                BK4819_SetFilterBandwidth(gTxVfo->CHANNEL_BANDWIDTH, true);
-            #else
-                BK4819_SetFilterBandwidth(gTxVfo->CHANNEL_BANDWIDTH, false);
-            #endif
-        }
+        const bool narrower = isRx && pVfo->CHANNEL_BANDWIDTH == BANDWIDTH_NARROW && gSetting_set_nfm == 1;
+        #ifdef ENABLE_AM_FIX
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH + narrower, true);
+        #else
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH + narrower, false);
+        #endif
     #else
-        if (FUNCTION_IsRx())
-        {
-            gRxVfo->CHANNEL_BANDWIDTH = (gRxVfo->CHANNEL_BANDWIDTH == 0) ? 1: 0;
-            #ifdef ENABLE_AM_FIX
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH, true);
-            #else
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH, false);
-            #endif
-        }
-        else
-        {
-            gTxVfo->CHANNEL_BANDWIDTH = (gTxVfo->CHANNEL_BANDWIDTH == 0) ? 1: 0;
-            #ifdef ENABLE_AM_FIX
-                BK4819_SetFilterBandwidth(gTxVfo->CHANNEL_BANDWIDTH, true);
-            #else
-                BK4819_SetFilterBandwidth(gTxVfo->CHANNEL_BANDWIDTH, false);
-            #endif
-        }
+        #ifdef ENABLE_AM_FIX
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH, true);
+        #else
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH, false);
+        #endif
     #endif
 }
 
