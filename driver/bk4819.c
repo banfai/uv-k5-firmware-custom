@@ -304,14 +304,38 @@ void BK4819_InitAGC(bool amModulation)
     //         0 = -33dB
     //
 
+    BK4819_WriteRegister(BK4819_REG_13, 0x03BE);  // 0x03BE / 000000 11 101 11 110 /  -7dB
+#ifdef ENABLE_AM_FIX
+    // original gain table: used together with the dynamic software AM-fix
+    // (am_fix.c), which re-tunes REG_10-14 itself at runtime, so the static
+    // values here only matter as the pre-AM_fix_enable() startup default.
+    BK4819_WriteRegister(BK4819_REG_12, 0x037B);  // 0x037B / 000000 11 011 11 011 / -24dB
+    BK4819_WriteRegister(BK4819_REG_11, 0x027B);  // 0x027B / 000000 10 011 11 011 / -43dB
+    BK4819_WriteRegister(BK4819_REG_10, 0x007A);  // 0x007A / 000000 00 011 11 010 / -58dB
+    if(amModulation) {
+        BK4819_WriteRegister(BK4819_REG_14, 0x0000);
+    }
+    else {
+        BK4819_WriteRegister(BK4819_REG_14, 0x0019);  // 0x0019 / 000000 00 000 11 001 / -84dB
+    }
+#else
     // gain table values backported from kamilsss655/uv-k5-firmware-custom's
     // BK4819_InitAGC (itself taken from the 1o11 am_fix), used for the static
-    // hardware-AGC path (i.e. when ENABLE_AM_FIX=0 / gSetting_AM_fix is off)
-    BK4819_WriteRegister(BK4819_REG_13, 0x03BE);  // 0x03BE / 000000 11 101 11 110 /  -7dB
+    // hardware-AGC path when the dynamic software AM-fix is compiled out
+    // (ENABLE_AM_FIX=0). Upstream history for these values:
+    //  - https://github.com/kamilsss655/uv-k5-firmware-custom/commit/67ae395f45 "RxAGC setting working." (2024-01-07)
+    //    adds the RX_AGC_SLOW/FAST speed switch this gain table is tuned against
+    //  - https://github.com/kamilsss655/uv-k5-firmware-custom/commit/8c00601353 "Changed bunch of AGC values as experiment." (2024-01-08)
+    //    introduces these REG_12/11/10 values with the comment "switched values to ones from 1o11 am_fix"
+    //  - https://github.com/kamilsss655/uv-k5-firmware-custom/commit/7c04d3a20c "am agc fast potential fix for strong signals nearby" (2024-01-18)
+    //    settles REG_14 back to 0x0019 (corrects the dB comment to -84dB)
+    //  - https://github.com/kamilsss655/uv-k5-firmware-custom/commit/ef98c1e9f8 "fix #82 am fast agc clipping" (2024-01-19)
+    //    further tunes the AGC-FAST speed (REG_49), not adopted here since we don't backport the speed dimension
     BK4819_WriteRegister(BK4819_REG_12, 0x0393);  // 0x0393 / 000000 11 100 10 011 / -24dB
     BK4819_WriteRegister(BK4819_REG_11, 0x01B5);  // 0x01B5 / 000000 01 101 10 101 / -43dB
     BK4819_WriteRegister(BK4819_REG_10, 0x0145);  // 0x0145 / 000000 01 010 00 101 / -58dB
     BK4819_WriteRegister(BK4819_REG_14, 0x0019);  // 0x0019 / 000000 00 000 11 001 / -84dB
+#endif
     if(amModulation) {
         BK4819_WriteRegister(BK4819_REG_49, (0 << 14) | (50 << 7) | (32 << 0));
     }
