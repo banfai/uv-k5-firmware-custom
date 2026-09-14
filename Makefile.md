@@ -198,8 +198,8 @@ Adds a "SetCtr" numeric (0–15) LCD contrast setting, applied via `ST7565_Contr
 ### `ENABLE_FEAT_F4HWN_RESCUE_OPS` (default: 0)
 Adds a hidden boot-time key combo (`10 + gEeprom.SET_KEY`, the key itself configurable via a new "SetKey" menu entry, held with PTT unpressed at power-on) that toggles a persistent `gEeprom.MENU_LOCK` flag; when locked, the Menu key and the star/F-function key are disabled (radio is restricted to basic RX/TX on the main screen, shown with an "RO" status-line icon) — useful for handing a preconfigured radio to non-technical users. It also adds two quick-action bindings, "Power High" (force max TX power, bypassing the normal power-level setting) and "Remove Offset" (transmit on the RX frequency, ignoring any configured repeater shift), intended as emergency/first-responder overrides that remain reachable even while the menu is locked. Also implies the plain (non-`ENABLE_FEAT_F4HWN`-editing) flashlight SOS-blink mode via `app/flashlight.c`'s guard.
 
-### `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` (removed from the Makefile)
-No longer has a `?=` default or any `ifeq`/`CFLAGS` block in the Makefile, so it can no longer be turned on via a build override — the `#if ... || defined(ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS)` guards still present in `app/flashlight.c`/`.h` and `app/app.c` are now permanently dead from the build system's perspective. Kept here only as a note in case it's reintroduced; it no longer appears in the flash-cost table below.
+### `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` (default: 0)
+Restores the flashlight's cycling OFF→ON→BLINK→SOS mode (with Morse-code SOS blink pattern) on F4HWN builds even without `ENABLE_FEAT_F4HWN_RESCUE_OPS` enabled; without either flag, F4HWN builds fall back to a plain on/off flashlight toggle. Opt-in, independent of `ENABLE_FEAT_F4HWN_RESCUE_OPS` (either one alone is sufficient to enable the richer flashlight modes).
 
 ### `ENABLE_FEAT_F4HWN_VOL` (default: 0)
 Adds a "SetVol" menu entry (0–63) that exposes the AF volume-gain register (`gEeprom.VOLUME_GAIN`) directly in the settings menu, with its own dedicated EEPROM write-back (`SETTINGS_WriteCurrentVol()` at `0x1F88`) so it's saved immediately rather than only on a full settings save.
@@ -349,6 +349,7 @@ errors in that code path).
 | `ENABLE_FEAT_F4HWN_INV` | 1 | +16 | measured directly |
 | `ENABLE_FEAT_F4HWN_CTR` | 1 | +52 | measured directly |
 | `ENABLE_FEAT_F4HWN_RESCUE_OPS` | 0 | +588 | measured directly |
+| `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` | 0 | +220 | measured directly, but via a local `arm-none-eabi-gcc` build rather than the `uvk5` Docker image used for the rest of this table (Docker wasn't available in this environment) — the delta should still be valid, but absolute .text/.data sizes from this toolchain aren't directly comparable to the Docker-measured baseline elsewhere in this doc |
 | `ENABLE_FEAT_F4HWN_VOL` | 0 | +148 | measured directly |
 | `ENABLE_FEAT_F4HWN_RESET_CHANNEL` | 0 | +72 | measured directly |
 | `ENABLE_FEAT_F4HWN_PMR` | 0 | +24 | measured directly |
@@ -363,10 +364,6 @@ errors in that code path).
 | `ENABLE_OVERLAY` | 0 | +640 | measured directly |
 | `ENABLE_LTO` | 1 | -3960 | measured directly |
 | `ENABLE_EXPERIMENTAL_CLFAGS` | 1 | -16 | measured directly |
-
-Note: `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` has been removed from the Makefile
-(no `?=` default, no `ifeq`/`CFLAGS` block) since the table was last
-measured and no longer has a row here — see its section above.
 
 A few standouts: `ENABLE_LTO` is by far the single biggest lever on this list
 (~4.0KB) and costs nothing feature-wise to keep on. `ENABLE_SPECTRUM`
