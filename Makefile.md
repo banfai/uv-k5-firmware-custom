@@ -107,6 +107,9 @@ Removes the ~16-second (32 × 500ms) timeout in `SCANNER_TimeSlice500ms` that wo
 ### `ENABLE_AM_FIX` (default: 1)
 Compiles in `am_fix.c`, an adaptive routine that continuously monitors and adjusts the BK4819's AM-mode gain/AGC settings per frequency to reduce AM-demodulator saturation/overload (a known hardware limitation), and adds an "AM FIX" on/off setting plus (with `ENABLE_AM_FIX_SHOW_DATA`) an on-screen debug readout of the adjusted register values.
 
+### `ENABLE_RX_AGC` (default: 0)
+Adds a "RxAGC" entry to the settings menu with three choices - OFF, SLOW, FAST - that lets the user pick the BK4819's receive AGC response speed, with separate SLOW/FAST timing constants for AM and FM reception; the choice is saved to EEPROM. Selecting OFF disables this flag's control of AGC entirely and leaves the chip's own built-in dynamic hardware AGC in charge. Without this flag, AGC is always hardware-enabled at one fixed, non-adjustable speed. If `ENABLE_AM_FIX` is also enabled, its software AM-fix routine takes over AGC control whenever it's actively engaged during AM reception, and the RxAGC setting has no effect during that time; RxAGC only governs AGC during FM reception, or during AM reception when AM Fix is off or not compiled in. Backported from `kamilsss655/uv-k5-firmware-custom`.
+
 ### `ENABLE_SQUELCH_MORE_SENSITIVE` (default: 1)
 In `RADIO_ConfigureSquelchAndOutputPower`, scales the squelch-open thresholds read from EEPROM to be more sensitive — RSSI-open threshold is halved and noise/glitch-open thresholds are doubled — then nudges the corresponding close thresholds apart from the open thresholds if they'd otherwise collide, making the squelch open on weaker signals than the stock calibration.
 
@@ -195,8 +198,8 @@ Adds a "SetCtr" numeric (0–15) LCD contrast setting, applied via `ST7565_Contr
 ### `ENABLE_FEAT_F4HWN_RESCUE_OPS` (default: 0)
 Adds a hidden boot-time key combo (`10 + gEeprom.SET_KEY`, the key itself configurable via a new "SetKey" menu entry, held with PTT unpressed at power-on) that toggles a persistent `gEeprom.MENU_LOCK` flag; when locked, the Menu key and the star/F-function key are disabled (radio is restricted to basic RX/TX on the main screen, shown with an "RO" status-line icon) — useful for handing a preconfigured radio to non-technical users. It also adds two quick-action bindings, "Power High" (force max TX power, bypassing the normal power-level setting) and "Remove Offset" (transmit on the RX frequency, ignoring any configured repeater shift), intended as emergency/first-responder overrides that remain reachable even while the menu is locked. Also implies the plain (non-`ENABLE_FEAT_F4HWN`-editing) flashlight SOS-blink mode via `app/flashlight.c`'s guard.
 
-### `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` (default: 1)
-Enables the flashlight's existing SOS-blink cycling mode (OFF → ON → BLINK → SOS, `app/flashlight.c`) in the F4HWN "Custom" build even without `ENABLE_FEAT_F4HWN_RESCUE_OPS` enabled; without either of those two flags (or when `ENABLE_FEAT_F4HWN` is off entirely) the flashlight action falls back to a plain on/off toggle with no blink or SOS states.
+### `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` (removed from the Makefile)
+No longer has a `?=` default or any `ifeq`/`CFLAGS` block in the Makefile, so it can no longer be turned on via a build override — the `#if ... || defined(ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS)` guards still present in `app/flashlight.c`/`.h` and `app/app.c` are now permanently dead from the build system's perspective. Kept here only as a note in case it's reintroduced; it no longer appears in the flash-cost table below.
 
 ### `ENABLE_FEAT_F4HWN_VOL` (default: 0)
 Adds a "SetVol" menu entry (0–63) that exposes the AF volume-gain register (`gEeprom.VOLUME_GAIN`) directly in the settings menu, with its own dedicated EEPROM write-back (`SETTINGS_WriteCurrentVol()` at `0x1F88`) so it's saved immediately rather than only on a full settings save.
@@ -260,16 +263,14 @@ value, diffing `.text + .data` against the baseline. Costs are normalized to
 tested to measure that — for a flag that defaults to 1, this means measuring
 what disabling it *saves*, then reporting the negation.
 
-**Baseline** at time of measurement: `.text` 61,300 + `.data` 52 = 61,352
-bytes, against a 61,440-byte (60KiB) `FLASH` region — **88 bytes of
-headroom**. That headroom is small enough that most currently-disabled flags
-overflow the linker's `FLASH` region when toggled on; those rows are marked
-"est." and computed as `overflow bytes + 88 bytes headroom`, which is the
-minimum possible cost (the true cost could be somewhat higher — this only
-proves a lower bound, since a smaller baseline might reveal the feature costs
-more once it has room to fully link in without hitting the region limit
-early). Flags already fitting after being toggled are exact, direct
-measurements.
+**Baseline** at time of measurement: `.text` 53,164 + `.data` 16 = 53,180
+bytes, against a 61,440-byte (60KiB) `FLASH` region — **8,260 bytes of
+headroom** (the current Makefile defaults are considerably leaner than at
+the last measurement, mainly because `ENABLE_SPECTRUM` now defaults to 0
+instead of 1). With that much headroom, no currently-disabled flag overflows
+the `FLASH` region when toggled on by itself, so every row below (aside from
+the two genuine build failures) is an exact, direct measurement rather than
+an overflow-based "est." lower bound.
 
 **This is not a table of isolable, additive costs.** Flags interact (shared
 helper functions, shared menu-table rows, overlapping `#ifdef` branches like
@@ -285,85 +286,92 @@ compile errors unrelated to flash budget — real latent bugs (undeclared
 identifiers, and one unbalanced `#ifdef`/`#else`/`#endif` spanning an
 `if`/`else` in a way that left a stray unmatched brace) in code paths that
 only compile under specific flag combinations. `ENABLE_VOICE`,
-`ENABLE_BIG_FREQ`, and `ENABLE_SCAN_RANGES` have since been fixed and now
-measure cleanly — the table below reflects that. `ENABLE_FEAT_F4HWN` (the
-non-F4HWN "egzumer" build) is still broken (a `driver/backlight.c` issue
-identified independently, out of scope for this pass) and remains N/A.
+`ENABLE_BIG_FREQ`, and `ENABLE_SCAN_RANGES` have since been fixed and
+measure cleanly below. Two rows remain N/A, unchanged from the last pass:
+`ENABLE_CLANG` (`clang: No such file or directory` — `clang` isn't installed
+in the Docker build image used for measurement, only `arm-none-eabi-gcc`)
+and `ENABLE_FEAT_F4HWN` (disabling it, the non-F4HWN "egzumer" build, still
+fails to compile — `driver/backlight.c` has several undeclared-identifier
+errors in that code path).
 
 | Flag | Default | Cost when ON (flash bytes) | Notes |
 |---|---|---|---|
-| `ENABLE_FMRADIO` | 1 | +2608 | measured directly |
-| `ENABLE_FMRADIO_MINIMIZED` | 1 | ~-1540 (est.) | disabling overflowed the baseline by 1452 bytes, i.e. the OFF (full-featured) state is bigger - ON saves an estimated 1540 bytes (overflow + 88 bytes headroom) |
-| `ENABLE_UART` | 1 | +1220 | measured directly |
-| `ENABLE_AIRCOPY` | 0 | ~+2100 (est.) | enabling overflowed the baseline by 2012 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_NOAA` | 0 | ~+1796 (est.) | enabling overflowed the baseline by 1708 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_VOICE` | 0 | ~+1548 (est.) | enabling overflowed the baseline by 1460 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_VOX` | 1 | +916 | measured directly |
-| `ENABLE_ALARM` | 0 | ~+916 (est.) | enabling overflowed the baseline by 828 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_TX1750` | 0 | ~+252 (est.) | enabling overflowed the baseline by 164 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_PWRON_PASSWORD` | 0 | ~+652 (est.) | enabling overflowed the baseline by 564 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_DTMF_CALLING` | 0 | ~+3720 (est.) | enabling overflowed the baseline by 3632 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FLASHLIGHT` | 1 | +276 | measured directly |
-| `ENABLE_SPECTRUM` | 1 | +6172 | measured directly |
-| `ENABLE_BIG_FREQ` | 1 | +104 | measured directly |
-| `ENABLE_SMALL_BOLD` | 1 | +580 | measured directly |
-| `ENABLE_CUSTOM_MENU_LAYOUT` | 1 | -52 | measured directly |
+| `ENABLE_FMRADIO` | 0 | +4352 | measured directly |
+| `ENABLE_FMRADIO_MINIMIZED` | 0 | +0 | measured directly |
+| `ENABLE_UART` | 1 | +1448 | measured directly |
+| `ENABLE_AIRCOPY` | 0 | +1516 | measured directly |
+| `ENABLE_NOAA` | 0 | +1220 | measured directly |
+| `ENABLE_VOICE` | 0 | +1320 | measured directly |
+| `ENABLE_VOX` | 1 | +812 | measured directly |
+| `ENABLE_ALARM` | 0 | +744 | measured directly |
+| `ENABLE_TX1750` | 1 | +204 | measured directly |
+| `ENABLE_PWRON_PASSWORD` | 0 | +472 | measured directly |
+| `ENABLE_DTMF_CALLING` | 0 | +3280 | measured directly |
+| `ENABLE_FLASHLIGHT` | 1 | +68 | measured directly |
+| `ENABLE_SPECTRUM` | 0 | +6804 | measured directly |
+| `ENABLE_BIG_FREQ` | 1 | +92 | measured directly |
+| `ENABLE_SMALL_BOLD` | 1 | +596 | measured directly |
+| `ENABLE_CUSTOM_MENU_LAYOUT` | 1 | -56 | measured directly |
 | `ENABLE_KEEP_MEM_NAME` | 1 | +12 | measured directly |
-| `ENABLE_WIDE_RX` | 1 | +72 | measured directly |
+| `ENABLE_WIDE_RX` | 1 | +76 | measured directly |
 | `ENABLE_TX_WHEN_AM` | 0 | -8 | measured directly |
-| `ENABLE_F_CAL_MENU` | 0 | ~+196 (est.) | enabling overflowed the baseline by 108 bytes; cost estimated as overflow + 88 bytes headroom |
+| `ENABLE_F_CAL_MENU` | 0 | +176 | measured directly |
 | `ENABLE_CTCSS_TAIL_PHASE_SHIFT` | 0 | +0 | measured directly |
 | `ENABLE_BOOT_BEEPS` | 0 | +0 | measured directly (this flag has no `#ifdef` anywhere in source - see above) |
-| `ENABLE_SHOW_CHARGE_LEVEL` | 0 | ~+100 (est.) | enabling overflowed the baseline by 12 bytes; cost estimated as overflow + 88 bytes headroom |
+| `ENABLE_SHOW_CHARGE_LEVEL` | 0 | +80 | measured directly |
 | `ENABLE_REVERSE_BAT_SYMBOL` | 0 | +0 | measured directly |
-| `ENABLE_NO_CODE_SCAN_TIMEOUT` | 1 | -20 | measured directly |
-| `ENABLE_AM_FIX` | 1 | +652 | measured directly |
+| `ENABLE_NO_CODE_SCAN_TIMEOUT` | 1 | -28 | measured directly |
+| `ENABLE_AM_FIX` | 1 | +592 | measured directly |
+| `ENABLE_RX_AGC` | 0 | +148 | measured directly |
 | `ENABLE_SQUELCH_MORE_SENSITIVE` | 1 | +92 | measured directly |
 | `ENABLE_FASTER_CHANNEL_SCAN` | 1 | +0 | measured directly |
 | `ENABLE_BACKLIGHT_ON_RX` | (unset) | +0 | not independently measured (no `?=` default to toggle against); +0 expected since no `#ifdef` anywhere consumes this macro - see above |
-| `ENABLE_RSSI_BAR` | 1 | +508 | measured directly |
-| `ENABLE_AUDIO_BAR` | 0 | ~+432 (est.) | enabling overflowed the baseline by 344 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_COPY_CHAN_TO_VFO` | 1 | +128 | measured directly |
+| `ENABLE_RSSI_BAR` | 1 | +428 | measured directly |
+| `ENABLE_AUDIO_BAR` | 1 | +384 | measured directly |
+| `ENABLE_COPY_CHAN_TO_VFO` | 1 | +124 | measured directly |
 | `ENABLE_SINGLE_VFO_CHAN` | (unset) | +0 | not independently measured (no `?=` default to toggle against); +0 expected since no `#ifdef` anywhere consumes this macro - see above |
 | `ENABLE_BAND_SCOPE` | (unset) | +0 | not independently measured (no `?=` default to toggle against); +0 expected since no `#ifdef` anywhere consumes this macro - see above |
 | `ENABLE_REDUCE_LOW_MID_TX_POWER` | 0 | +0 | measured directly |
-| `ENABLE_BYP_RAW_DEMODULATORS` | 1 | +32 | measured directly |
-| `ENABLE_BLMIN_TMP_OFF` | 0 | +76 | measured directly |
-| `ENABLE_SCAN_RANGES` | 1 | +1060 | measured directly |
-| `ENABLE_REGA` | 0 | ~+628 (est.) | enabling overflowed the baseline by 540 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_EXTRA_UART_CMD` | 0 | ~+224 (est.) | enabling overflowed the baseline by 136 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FEAT_F4HWN` | 1 | N/A | pre-existing bug, confirmed independently earlier this session: disabling it (the non-F4HWN "egzumer" build) fails to compile - `driver/backlight.c` has several undeclared-identifier errors in that code path |
-| `ENABLE_FEAT_F4HWN_GAME` | 0 | ~+1884 (est.) | enabling overflowed the baseline by 1796 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FEAT_F4HWN_SCREENSHOT` | 0 | ~+468 (est.) | enabling overflowed the baseline by 380 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FEAT_F4HWN_SPECTRUM` | 1 | +604 | measured directly |
-| `ENABLE_FEAT_F4HWN_RX_TX_TIMER` | 0 | ~+236 (est.) | enabling overflowed the baseline by 148 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FEAT_F4HWN_CHARGING_C` | 0 | +28 | measured directly |
-| `ENABLE_FEAT_F4HWN_SLEEP` | 1 | +512 | measured directly |
-| `ENABLE_FEAT_F4HWN_RESUME_STATE` | 1 | +384 | measured directly |
-| `ENABLE_FEAT_F4HWN_NARROWER` | 1 | +216 | measured directly |
-| `ENABLE_FEAT_F4HWN_INV` | 0 | +56 | measured directly |
-| `ENABLE_FEAT_F4HWN_CTR` | 0 | +88 | measured directly |
-| `ENABLE_FEAT_F4HWN_RESCUE_OPS` | 0 | ~+500 (est.) | enabling overflowed the baseline by 412 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` | 1 | +204 | measured directly |
-| `ENABLE_FEAT_F4HWN_VOL` | 0 | ~+132 (est.) | enabling overflowed the baseline by 44 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FEAT_F4HWN_RESET_CHANNEL` | 0 | +68 | measured directly |
-| `ENABLE_FEAT_F4HWN_PMR` | 0 | +32 | measured directly |
-| `ENABLE_FEAT_F4HWN_GMRS_FRS_MURS` | 0 | ~+116 (est.) | enabling overflowed the baseline by 28 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_FEAT_F4HWN_CA` | 0 | +56 | measured directly |
-| `ENABLE_FEAT_F4HWN_DEBUG` | 0 | -124 | measured directly |
-| `ENABLE_AM_FIX_SHOW_DATA` | 0 | ~+352 (est.) | enabling overflowed the baseline by 264 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_AGC_SHOW_DATA` | 0 | +40 | measured directly |
-| `ENABLE_UART_RW_BK_REGS` | 0 | +72 | measured directly |
-| `ENABLE_CLANG` | 0 | N/A | not measurable in this environment: `clang` isn't installed in the Docker build image used for measurement (only `arm-none-eabi-gcc`) |
+| `ENABLE_BYP_RAW_DEMODULATORS` | 0 | +8 | measured directly |
+| `ENABLE_BLMIN_TMP_OFF` | 0 | +32 | measured directly |
+| `ENABLE_SCAN_RANGES` | 1 | +380 | measured directly |
+| `ENABLE_REGA` | 0 | +612 | measured directly |
+| `ENABLE_EXTRA_UART_CMD` | 0 | +232 | measured directly |
+| `ENABLE_FEAT_F4HWN` | 1 | N/A | pre-existing bug, unchanged from the last pass: disabling it (the non-F4HWN "egzumer" build) fails to compile - `driver/backlight.c` has several undeclared-identifier errors in that code path |
+| `ENABLE_FEAT_F4HWN_GAME` | 0 | +2688 | measured directly |
+| `ENABLE_FEAT_F4HWN_SCREENSHOT` | 0 | +380 | measured directly |
+| `ENABLE_FEAT_F4HWN_SPECTRUM` | 1 | +0 | measured directly |
+| `ENABLE_FEAT_F4HWN_RX_TX_TIMER` | 1 | +188 | measured directly |
+| `ENABLE_FEAT_F4HWN_CHARGING_C` | 0 | +36 | measured directly |
+| `ENABLE_FEAT_F4HWN_SLEEP` | 1 | +480 | measured directly |
+| `ENABLE_FEAT_F4HWN_RESUME_STATE` | 1 | +220 | measured directly |
+| `ENABLE_FEAT_F4HWN_NARROWER` | 1 | +200 | measured directly |
+| `ENABLE_FEAT_F4HWN_INV` | 1 | +16 | measured directly |
+| `ENABLE_FEAT_F4HWN_CTR` | 1 | +52 | measured directly |
+| `ENABLE_FEAT_F4HWN_RESCUE_OPS` | 0 | +588 | measured directly |
+| `ENABLE_FEAT_F4HWN_VOL` | 0 | +148 | measured directly |
+| `ENABLE_FEAT_F4HWN_RESET_CHANNEL` | 0 | +72 | measured directly |
+| `ENABLE_FEAT_F4HWN_PMR` | 0 | +24 | measured directly |
+| `ENABLE_FEAT_F4HWN_GMRS_FRS_MURS` | 0 | +108 | measured directly |
+| `ENABLE_FEAT_F4HWN_CA` | 1 | +56 | measured directly |
+| `ENABLE_FEAT_F4HWN_DEBUG` | 0 | -280 | measured directly |
+| `ENABLE_AM_FIX_SHOW_DATA` | 0 | +228 | measured directly |
+| `ENABLE_AGC_SHOW_DATA` | 0 | +0 | measured directly |
+| `ENABLE_UART_RW_BK_REGS` | 0 | +76 | measured directly |
+| `ENABLE_CLANG` | 0 | N/A | not measurable in this environment: `clang: No such file or directory` - `clang` isn't installed in the Docker build image used for measurement (only `arm-none-eabi-gcc`) |
 | `ENABLE_SWD` | 0 | +4 | measured directly |
-| `ENABLE_OVERLAY` | 0 | ~+808 (est.) | enabling overflowed the baseline by 720 bytes; cost estimated as overflow + 88 bytes headroom |
-| `ENABLE_LTO` | 1 | ~-4236 (est.) | disabling overflowed the baseline by 4148 bytes, i.e. the OFF state is bigger - ON saves an estimated 4236 bytes (overflow + 88 bytes headroom) |
-| `ENABLE_EXPERIMENTAL_CLFAGS` | 1 | -24 | measured directly |
+| `ENABLE_OVERLAY` | 0 | +640 | measured directly |
+| `ENABLE_LTO` | 1 | -3960 | measured directly |
+| `ENABLE_EXPERIMENTAL_CLFAGS` | 1 | -16 | measured directly |
+
+Note: `ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS` has been removed from the Makefile
+(no `?=` default, no `ifeq`/`CFLAGS` block) since the table was last
+measured and no longer has a row here — see its section above.
 
 A few standouts: `ENABLE_LTO` is by far the single biggest lever on this list
-(~4.2KB) and costs nothing feature-wise to keep on. `ENABLE_SPECTRUM`
-(+6.2KB) and `ENABLE_DTMF_CALLING` (~+3.7KB est.) are the priciest actual
-features. Several flags measure `+0` exactly — `ENABLE_CTCSS_TAIL_PHASE_SHIFT`,
+(~4.0KB) and costs nothing feature-wise to keep on. `ENABLE_SPECTRUM`
+(+6.8KB) and `ENABLE_DTMF_CALLING` (+3.3KB) are the priciest actual features.
+Several flags measure `+0` exactly — `ENABLE_CTCSS_TAIL_PHASE_SHIFT`,
 `ENABLE_REVERSE_BAT_SYMBOL`, `ENABLE_FASTER_CHANNEL_SCAN`,
 `ENABLE_REDUCE_LOW_MID_TX_POWER` — these swap constants/behavior rather than
 adding code, so they're effectively free either way.
