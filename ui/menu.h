@@ -106,6 +106,9 @@ enum
 #ifdef ENABLE_AM_FIX
     MENU_AM_FIX,
 #endif
+#ifdef ENABLE_RX_AGC
+    MENU_RX_AGC,
+#endif
 #ifndef ENABLE_FEAT_F4HWN
     #ifdef ENABLE_NOAA
         MENU_NOAA_S,
@@ -171,6 +174,10 @@ extern const char        gSubMenu_OFF_ON[2][4];
 extern const char        gSubMenu_NA[4];
 extern const char        gSubMenu_TOT[11][7];
 extern const char* const gSubMenu_RXMode[4];
+
+#ifdef ENABLE_RX_AGC
+    extern const char    gSubMenu_RX_AGC[RX_AGC_LEN][8];
+#endif
 
 #ifdef ENABLE_VOICE
     extern const char    gSubMenu_VOICE[3][4];

@@ -131,6 +131,9 @@ const t_menu_item MenuList[] =
         {"AM Fix",      MENU_AM_FIX        },
     #endif
 #endif
+#ifdef ENABLE_RX_AGC
+    {"RxAGC",       MENU_RX_AGC        },
+#endif
     {"VOX",         MENU_VOX           },
 #ifdef ENABLE_FEAT_F4HWN
     {"SysInf",      MENU_VOL           }, // was "VOL"
@@ -233,6 +236,15 @@ const char* const gSubMenu_RXMode[] =
     "CROSS\nBAND",      // TX on main, RX on secondary
     "MAIN TX\nDUAL RX"  // always TX on main, but RX on both
 };
+
+#ifdef ENABLE_RX_AGC
+    const char gSubMenu_RX_AGC[RX_AGC_LEN][8] =
+    {
+        "OFF",
+        "SLOW",
+        "FAST"
+    };
+#endif
 
 #ifdef ENABLE_VOICE
     const char gSubMenu_VOICE[][4] =
@@ -894,6 +906,12 @@ void UI_DisplayMenu(void)
         #ifdef ENABLE_VOICE
             case MENU_VOICE:
                 strcpy(String, gSubMenu_VOICE[gSubMenuSelection]);
+                break;
+        #endif
+
+        #ifdef ENABLE_RX_AGC
+            case MENU_RX_AGC:
+                strcpy(String, gSubMenu_RX_AGC[gSubMenuSelection]);
                 break;
         #endif
 
