@@ -37,7 +37,7 @@ uint8_t             initialCROSS_BAND_RX_TX;
 static void NextFreqChannel(void);
 static void NextMemChannel(void);
 
-#if defined(ENABLE_FEAT_F4HWN_RESUME_STATE) || defined(ENABLE_SCAN_RANGES)
+#ifdef ENABLE_SCAN_RANGES
     void CHFRSCANNER_ScanRange(void) {
         gScanRangeStart = gScanRangeStart ? 0 : gTxVfo->pRX->Frequency;
         gScanRangeStop = gEeprom.VfoInfo[!gEeprom.TX_VFO].freq_config_RX.Frequency;
