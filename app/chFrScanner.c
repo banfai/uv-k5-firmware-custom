@@ -37,6 +37,15 @@ uint8_t             initialCROSS_BAND_RX_TX;
 static void NextFreqChannel(void);
 static void NextMemChannel(void);
 
+#ifdef ENABLE_SCAN_RANGES
+    void CHFRSCANNER_ScanRange(void) {
+        gScanRangeStart = gScanRangeStart ? 0 : gTxVfo->pRX->Frequency;
+        gScanRangeStop = gEeprom.VfoInfo[!gEeprom.TX_VFO].freq_config_RX.Frequency;
+        if(gScanRangeStart > gScanRangeStop)
+            SWAP(gScanRangeStart, gScanRangeStop);
+    }
+#endif
+
 void CHFRSCANNER_Start(const bool storeBackupSettings, const int8_t scan_direction)
 {
     if (storeBackupSettings) {

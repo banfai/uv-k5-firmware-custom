@@ -5,7 +5,7 @@
 
 #include "flashlight.h"
 
-#if !defined(ENABLE_FEAT_F4HWN) || defined(ENABLE_FEAT_F4HWN_RESCUE_OPS)
+#if !defined(ENABLE_FEAT_F4HWN) || defined(ENABLE_FEAT_F4HWN_RESCUE_OPS) || defined(ENABLE_FEAT_F4HWN_FLASHLIGHT_SOS)
     enum FlashlightMode_t  gFlashLightState;
 
     void FlashlightTimeSlice()
@@ -48,20 +48,29 @@
 
     void ACTION_FlashLight(void)
     {
-        switch (gFlashLightState) {
-            case FLASHLIGHT_OFF:
-                gFlashLightState++;
-                GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_FLASHLIGHT);
-                break;
-            case FLASHLIGHT_ON:
-            case FLASHLIGHT_BLINK:
-                gFlashLightState++;
-                break;
-            case FLASHLIGHT_SOS:
-            default:
-                gFlashLightState = 0;
-                GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_FLASHLIGHT);
+        // switch (gFlashLightState) {
+        //     case FLASHLIGHT_OFF:
+        //         gFlashLightState++;
+        //         GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_FLASHLIGHT);
+        //         break;
+        //     case FLASHLIGHT_ON:
+        //     case FLASHLIGHT_BLINK:
+        //         gFlashLightState++;
+        //         break;
+        //     case FLASHLIGHT_SOS:
+        //     default:
+        //         gFlashLightState = 0;
+        //         GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_FLASHLIGHT);
+        // }
+
+        if(gFlashLightState == FLASHLIGHT_OFF) {
+            GPIO_SetBit(&GPIOC->DATA, GPIOC_PIN_FLASHLIGHT);
         }
+        else if (gFlashLightState == FLASHLIGHT_SOS) {
+            GPIO_ClearBit(&GPIOC->DATA, GPIOC_PIN_FLASHLIGHT);
+        }
+
+        gFlashLightState = (gFlashLightState + 1) % 4;
     }
 #else
     void ACTION_FlashLight(void)

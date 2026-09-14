@@ -31,9 +31,11 @@
 #include "../helper/battery.h"
 #include "../misc.h"
 #include "../settings.h"
+
 #ifdef ENABLE_FEAT_F4HWN
     #include "../version.h"
 #endif
+
 #include "helper.h"
 #include "inputbox.h"
 #include "menu.h"
@@ -128,6 +130,9 @@ const t_menu_item MenuList[] =
     #ifdef ENABLE_AM_FIX
         {"AM Fix",      MENU_AM_FIX        },
     #endif
+#endif
+#ifdef ENABLE_RX_AGC
+    {"RxAGC",       MENU_RX_AGC        },
 #endif
     {"VOX",         MENU_VOX           },
 #ifdef ENABLE_FEAT_F4HWN
@@ -231,6 +236,15 @@ const char* const gSubMenu_RXMode[] =
     "CROSS\nBAND",      // TX on main, RX on secondary
     "MAIN TX\nDUAL RX"  // always TX on main, but RX on both
 };
+
+#ifdef ENABLE_RX_AGC
+    const char gSubMenu_RX_AGC[RX_AGC_LEN][8] =
+    {
+        "OFF",
+        "SLOW",
+        "FAST"
+    };
+#endif
 
 #ifdef ENABLE_VOICE
     const char gSubMenu_VOICE[][4] =
@@ -493,6 +507,15 @@ char    edit_original[17]; // a copy of the text before editing so that we can e
 char    edit[17];
 int     edit_index;
 
+// Shared by several UI_DisplayMenu() cases (ABR, AUTOLK, TOT, SC_REV's timeout
+// branch) that each repeated "divide/mod a selection-derived total by 60, then
+// sprintf as MMm:SSs" - division has no hardware support on Cortex-M0, so this
+// also avoids repeating the library divmod call.
+static void MENU_FormatMinSec(char *s, const char *fmt, int32_t totalSeconds)
+{
+    sprintf(s, fmt, totalSeconds / 60, totalSeconds % 60);
+}
+
 void UI_DisplayMenu(void)
 {
     const unsigned int menu_list_width = 6; // max no. of characters on the menu list (left side)
@@ -679,15 +702,14 @@ void UI_DisplayMenu(void)
             if (!gIsInSubMenu || gInputBoxIndex == 0)
             {
                 sprintf(String, "%3d.%05u", gSubMenuSelection / 100000, abs(gSubMenuSelection) % 100000);
-                UI_PrintString(String, menu_item_x1, menu_item_x2, 1, 8);
             }
             else
             {
                 const char * ascii = INPUTBOX_GetAscii();
                 sprintf(String, "%.3s.%.3s  ",ascii, ascii + 3);
-                UI_PrintString(String, menu_item_x1, menu_item_x2, 1, 8);
             }
 
+            UI_PrintString(String, menu_item_x1, menu_item_x2, 1, 8);
             UI_PrintString("MHz",  menu_item_x1, menu_item_x2, 3, 8);
 
             already_printed = true;
@@ -724,7 +746,7 @@ void UI_DisplayMenu(void)
             }
             else if(gSubMenuSelection < 61)
             {
-                sprintf(String, "%02dm:%02ds", (((gSubMenuSelection) * 5) / 60), (((gSubMenuSelection) * 5) % 60));
+                MENU_FormatMinSec(String, "%02dm:%02ds", gSubMenuSelection * 5);
                 #if !defined(ENABLE_SPECTRUM) || !defined(ENABLE_FMRADIO)
                 //ST7565_Gauge(4, 1, 60, gSubMenuSelection);
                 gaugeLine = 4;
@@ -761,7 +783,7 @@ void UI_DisplayMenu(void)
                 strcpy(String, gSubMenu_OFF_ON[0]);
             else
             {
-                sprintf(String, "%02dm:%02ds", ((gSubMenuSelection * 15) / 60), ((gSubMenuSelection * 15) % 60));
+                MENU_FormatMinSec(String, "%02dm:%02ds", gSubMenuSelection * 15);
                 #if !defined(ENABLE_SPECTRUM) || !defined(ENABLE_FMRADIO)
                 //ST7565_Gauge(4, 1, 40, gSubMenuSelection);
                 gaugeLine = 4;
@@ -881,7 +903,7 @@ void UI_DisplayMenu(void)
             break;
 
         case MENU_TOT:
-            sprintf(String, "%02dm:%02ds", (((gSubMenuSelection + 1) * 5) / 60), (((gSubMenuSelection + 1) * 5) % 60));
+            MENU_FormatMinSec(String, "%02dm:%02ds", (gSubMenuSelection + 1) * 5);
             #if !defined(ENABLE_SPECTRUM) || !defined(ENABLE_FMRADIO)
             //ST7565_Gauge(4, 5, 179, gSubMenuSelection);
             gaugeLine = 4;
@@ -893,6 +915,12 @@ void UI_DisplayMenu(void)
         #ifdef ENABLE_VOICE
             case MENU_VOICE:
                 strcpy(String, gSubMenu_VOICE[gSubMenuSelection]);
+                break;
+        #endif
+
+        #ifdef ENABLE_RX_AGC
+            case MENU_RX_AGC:
+                strcpy(String, gSubMenu_RX_AGC[gSubMenuSelection]);
                 break;
         #endif
 
@@ -913,7 +941,7 @@ void UI_DisplayMenu(void)
             }
             else
             {
-                sprintf(String, "TIMEOUT\n%02dm:%02ds", (((gSubMenuSelection - 80) * 5) / 60), (((gSubMenuSelection - 80) * 5) % 60));
+                MENU_FormatMinSec(String, "TIMEOUT\n%02dm:%02ds", (gSubMenuSelection - 80) * 5);
                 #if !defined(ENABLE_SPECTRUM) || !defined(ENABLE_FMRADIO)
                 //ST7565_Gauge(5, 80, 104, gSubMenuSelection);
                 gaugeLine = 5;
@@ -950,7 +978,7 @@ void UI_DisplayMenu(void)
 
 #ifdef ENABLE_DTMF_CALLING
         case MENU_ANI_ID:
-            strcpy(String, gEeprom.ANI_DTMF_ID);
+            sprintf(String, "%.8s", gEeprom.ANI_DTMF_ID);
             break;
 #endif
         case MENU_UPCODE:
@@ -1262,7 +1290,10 @@ void UI_DisplayMenu(void)
 
         char *pPrintStr = String;
 
-        if (gSubMenuSelection < 0) {
+        // RADIO_FindNextChannel() returns 0xFF ("not found") into this
+        // int32_t, which is never < 0 - IS_MR_CHANNEL() catches both that
+        // sentinel and any genuinely negative value.
+        if (!IS_MR_CHANNEL(gSubMenuSelection)) {
             pPrintStr = "NULL";
         } else {
             UI_GenerateChannelStringEx(String, true, gSubMenuSelection);
@@ -1276,7 +1307,7 @@ void UI_DisplayMenu(void)
         pPrintStr = String[0] ? String : "--";
 
         // channel name and scan-list
-        if (gSubMenuSelection < 0 || !gEeprom.SCAN_LIST_ENABLED[i]) {
+        if (!IS_MR_CHANNEL(gSubMenuSelection) || !gEeprom.SCAN_LIST_ENABLED[i]) {
             UI_PrintString(pPrintStr, menu_item_x1, menu_item_x2, 2, 8);
         } else {
             /*
