@@ -14,6 +14,7 @@
  *     limitations under the License.
  */
 
+#include <stddef.h>
 #include <string.h>
 
 #if !defined(ENABLE_OVERLAY)
@@ -319,8 +320,12 @@ static void CMD_051D(const uint8_t *pBuffer)
 
     if (!bIsLocked)
     {
+        // pCmd->Size comes straight off the wire (0-255); clamp it so
+        // pCmd->Data[] never reads past UART_Command.Buffer's real storage.
+        const uint8_t MaxSize = sizeof(UART_Command.Buffer) - offsetof(CMD_051D_t, Data);
+        const uint8_t Size    = (pCmd->Size <= MaxSize) ? pCmd->Size : MaxSize;
         unsigned int i;
-        for (i = 0; i < (pCmd->Size / 8); i++)
+        for (i = 0; i < (Size / 8); i++)
         {
             const uint16_t Offset = pCmd->Offset + (i * 8U);
 

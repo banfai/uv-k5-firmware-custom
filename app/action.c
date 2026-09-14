@@ -252,7 +252,7 @@ void ACTION_Scan(bool bRestart)
             gEeprom.CURRENT_STATE = 2;
         }
         #else
-        gEeprom.CURRENT_STATE = 1;
+        gEeprom.CURRENT_STATE = 1; // ScanRange feature not built - always a plain scan
         #endif
         SETTINGS_WriteCurrentState();
         #endif
@@ -540,44 +540,29 @@ void ACTION_Ptt(void)
 
 void ACTION_Wn(void)
 {
-    #ifdef ENABLE_FEAT_F4HWN_NARROWER
-        if (FUNCTION_IsRx())
-        {
-            bool narrower = 0;
-            
-            gRxVfo->CHANNEL_BANDWIDTH = (gRxVfo->CHANNEL_BANDWIDTH == 0) ? 1: 0;
-            if(gRxVfo->CHANNEL_BANDWIDTH == BANDWIDTH_NARROW && gSetting_set_nfm == 1)
-            {
-                narrower = 1;
-            }
+    // RX and TX used to be separate, near-identical branches here differing only
+    // in which VFO they touched. Note this preserves the pre-existing behavior
+    // exactly, including that the narrower-mode bump below was (and still is)
+    // only ever applied on the RX path.
+    const bool  isRx = FUNCTION_IsRx();
+    VFO_Info_t *pVfo = isRx ? gRxVfo : gTxVfo;
 
-            #ifdef ENABLE_AM_FIX
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH + narrower, true);
-            #else
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH + narrower, false);
-            #endif
-        }
+    pVfo->CHANNEL_BANDWIDTH = (pVfo->CHANNEL_BANDWIDTH == 0) ? 1 : 0;
+
+    #ifdef ENABLE_FEAT_F4HWN_NARROWER
+        const bool narrower = isRx && pVfo->CHANNEL_BANDWIDTH == BANDWIDTH_NARROW && gSetting_set_nfm == 1;
+        #ifdef ENABLE_AM_FIX
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH + narrower, true);
+        #else
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH + narrower, false);
+        #endif
     #else
-        if (FUNCTION_IsRx())
-        {
-            gRxVfo->CHANNEL_BANDWIDTH = (gRxVfo->CHANNEL_BANDWIDTH == 0) ? 1: 0;
-            #ifdef ENABLE_AM_FIX
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH, true);
-            #else
-                BK4819_SetFilterBandwidth(gRxVfo->CHANNEL_BANDWIDTH, false);
-            #endif
-        }
+        #ifdef ENABLE_AM_FIX
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH, true);
+        #else
+            BK4819_SetFilterBandwidth(pVfo->CHANNEL_BANDWIDTH, false);
+        #endif
     #endif
-        else
-        {
-            gTxVfo->CHANNEL_BANDWIDTH = (gTxVfo->CHANNEL_BANDWIDTH == 0) ? 1: 0;
-            
-            #ifdef ENABLE_AM_FIX
-                BK4819_SetFilterBandwidth(gTxVfo->CHANNEL_BANDWIDTH, true);
-            #else
-                BK4819_SetFilterBandwidth(gTxVfo->CHANNEL_BANDWIDTH, false);
-            #endif
-        }
 }
 
 void ACTION_BackLight(void)
