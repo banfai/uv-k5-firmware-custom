@@ -168,6 +168,9 @@ void SETTINGS_InitEEPROM(void)
             gEeprom.S9_LEVEL = 76;
         }
     #endif
+    #ifdef ENABLE_RX_AGC
+        gEeprom.RX_AGC = (Data[3] < RX_AGC_LEN) ? Data[3] : RX_AGC_SLOW;
+    #endif
 
     // 0EA8..0EAF
     EEPROM_ReadBuffer(0x0EA8, Data, 8);
@@ -688,6 +691,9 @@ void SETTINGS_SaveSettings(void)
 #ifdef ENABLE_RSSI_BAR
     State[1] = gEeprom.S0_LEVEL;
     State[2] = gEeprom.S9_LEVEL;
+#endif
+#ifdef ENABLE_RX_AGC
+    State[3] = gEeprom.RX_AGC;
 #endif
     EEPROM_WriteBuffer(0x0EA0, State);
 

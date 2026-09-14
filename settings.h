@@ -73,6 +73,15 @@ enum {
     CROSS_BAND_CHAN_B
 };
 
+#ifdef ENABLE_RX_AGC
+enum {
+    RX_AGC_OFF = 0,
+    RX_AGC_SLOW,
+    RX_AGC_FAST,
+    RX_AGC_LEN
+};
+#endif
+
 enum {
     DUAL_WATCH_OFF = 0,
     DUAL_WATCH_CHAN_A,
@@ -301,6 +310,9 @@ typedef struct {
 #ifdef ENABLE_RSSI_BAR
     uint8_t               S0_LEVEL;
     uint8_t               S9_LEVEL;
+#endif
+#ifdef ENABLE_RX_AGC
+    uint8_t               RX_AGC;
 #endif
 } EEPROM_Config_t;
 

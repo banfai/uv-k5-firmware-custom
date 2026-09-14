@@ -263,6 +263,13 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
             *pMax = ARRAY_SIZE(gModulationStr) - 1;
             break;
 
+#ifdef ENABLE_RX_AGC
+        case MENU_RX_AGC:
+            //*pMin = 0;
+            *pMax = RX_AGC_LEN - 1;
+            break;
+#endif
+
 #ifndef ENABLE_FEAT_F4HWN
         case MENU_SCR:
             //*pMin = 0;
@@ -833,6 +840,14 @@ void MENU_AcceptSetting(void)
             #endif
         #endif
 
+        #ifdef ENABLE_RX_AGC
+            case MENU_RX_AGC:
+                gEeprom.RX_AGC    = gSubMenuSelection;
+                gVfoConfigureMode = VFO_CONFIGURE_RELOAD;
+                gFlagResetVfos    = true;
+                break;
+        #endif
+
         #ifdef ENABLE_NOAA
             case MENU_NOAA_S:
                 gEeprom.NOAA_AUTO_SCAN = gSubMenuSelection;
@@ -1236,7 +1251,13 @@ void MENU_ShowCurrentSetting(void)
                 break;
     #endif
 #endif
-                
+
+#ifdef ENABLE_RX_AGC
+            case MENU_RX_AGC:
+                gSubMenuSelection = gEeprom.RX_AGC;
+                break;
+#endif
+
         #ifdef ENABLE_NOAA
             case MENU_NOAA_S:
                 gSubMenuSelection = gEeprom.NOAA_AUTO_SCAN;
