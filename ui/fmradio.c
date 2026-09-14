@@ -71,19 +71,26 @@ void UI_DisplayFM(void)
                 }
             }
         }
-    } else if (gFM_AutoScan) {
+    }
+#ifndef ENABLE_FMRADIO_MINIMIZED
+    else if (gFM_AutoScan) {
         sprintf(String, "A-SCAN(%u)", gFM_ChannelPosition + 1);
         pPrintStr = String;
-    } else {
+    }
+#endif
+    else {
         pPrintStr = "M-SCAN";
     }
 
     UI_PrintString(pPrintStr, 0, 127, 3, 10); // memory, vfo, scan
 
     memset(String, 0, sizeof(String));
+#ifndef ENABLE_FMRADIO_MINIMIZED
     if (gAskToSave || (gEeprom.FM_IsMrMode && gInputBoxIndex > 0)) {
         UI_GenerateChannelString(String, gFM_ChannelPosition);
-    } else if (gAskToDelete) {
+    } else
+#endif
+    if (gAskToDelete) {
         sprintf(String, "CH-%02u", gEeprom.FM_SelectedChannel + 1);
     } else {
         if (gInputBoxIndex == 0) {
