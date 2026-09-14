@@ -21,6 +21,9 @@
 #include <stdint.h>
 
 #include "driver/bk4819-regs.h"
+#ifdef ENABLE_RX_AGC
+#include "radio.h"   // ModulationMode_t
+#endif
 
 enum BK4819_AF_Type_t
 {
@@ -73,7 +76,11 @@ void     BK4819_WriteU8(uint8_t Data);
 void     BK4819_WriteU16(uint16_t Data);
 
 void     BK4819_SetAGC(bool enable);
+#ifdef ENABLE_RX_AGC
+void     BK4819_InitAGC(const uint8_t agcType, ModulationMode_t modulation);
+#else
 void     BK4819_InitAGC(bool amModulation);
+#endif
 
 void     BK4819_ToggleGpioOut(BK4819_GPIO_PIN_t Pin, bool bSet);
 

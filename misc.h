@@ -189,9 +189,12 @@ extern enum BacklightOnRxTx_t gSetting_backlight_on_tx_rx;
     extern uint8_t            gDW;
     extern uint8_t            gCB;
     extern bool               gSaveRxMode;
-    extern uint8_t            crc[15];
-    extern uint8_t            lErrorsDuringAirCopy;
-    extern uint8_t            gAircopyStep;
+    #ifdef ENABLE_AIRCOPY
+        extern uint8_t            crc[15];
+        extern uint8_t            lErrorsDuringAirCopy;
+        extern uint8_t            gAircopyStep;
+        extern bool               gAirCopyBootMode;
+    #endif
     #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
         extern bool               gPowerHigh;
         extern bool               gRemoveOffset;
@@ -301,6 +304,7 @@ extern AlarmState_t          gAlarmState;
 extern uint16_t              gMenuCountdown;
 extern bool                  gPttWasReleased;
 extern bool                  gPttWasPressed;
+extern bool                  gHasVfoBackup;
 extern bool                  gFlagReconfigureVfos;
 extern uint8_t               gVfoConfigureMode;
 extern bool                  gFlagResetVfos;
@@ -357,7 +361,7 @@ extern uint8_t               gFSKWriteIndex;
 extern volatile bool         gNextTimeslice;
 extern bool                  gUpdateDisplay;
 extern bool                  gF_LOCK;
-#ifdef ENABLE_FMRADIO
+#if defined(ENABLE_FMRADIO) && !defined(ENABLE_FMRADIO_MINIMIZED)
     extern uint8_t           gFM_ChannelPosition;
 #endif
 extern uint8_t               gShowChPrefix;

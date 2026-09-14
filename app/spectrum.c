@@ -50,7 +50,7 @@ const uint16_t RSSI_MAX_VALUE = 65535;
 static uint32_t initialFreq;
 static char String[32];
 
-bool isInitialized = false;
+static bool isInitialized = false;
 bool isListening = true;
 bool monitorMode = false;
 bool redrawStatus = true;
@@ -64,7 +64,7 @@ State currentState = SPECTRUM, previousState = SPECTRUM;
 
 PeakInfo peak;
 ScanInfo scanInfo;
-KeyboardState kbd = {KEY_INVALID, KEY_INVALID, 0};
+static KeyboardState kbd = {KEY_INVALID, KEY_INVALID, 0};
 
 #ifdef ENABLE_SCAN_RANGES
 static uint16_t blacklistFreqs[15];
@@ -348,8 +348,15 @@ static void ToggleAFDAC(bool on)
     BK4819_WriteRegister(BK4819_REG_30, Reg);
 }
 
+static uint32_t NormalizeScanFrequency(uint32_t f)
+{
+    const uint16_t step = scanStepValues[settings.scanStepIndex];
+    return (step == 833) ? FREQUENCY_RoundToStep(f, step) : f;
+}
+
 static void SetF(uint32_t f)
 {
+    f = NormalizeScanFrequency(f);
     fMeasure = f;
 
     BK4819_SetFrequency(fMeasure);
@@ -580,7 +587,7 @@ static void UpdateScanInfo()
     if (scanInfo.rssi > scanInfo.rssiMax)
     {
         scanInfo.rssiMax = scanInfo.rssi;
-        scanInfo.fPeak = scanInfo.f;
+        scanInfo.fPeak = NormalizeScanFrequency(scanInfo.f);
         scanInfo.iPeak = scanInfo.i;
     }
 
@@ -785,11 +792,13 @@ static void ToggleBacklight()
     settings.backlightState = !settings.backlightState;
     if (settings.backlightState)
     {
-        BACKLIGHT_TurnOn();
+        // BACKLIGHT_TurnOn();
+        BACKLIGHT_SetBrightness(gEeprom.BACKLIGHT_MAX);
     }
     else
     {
-        BACKLIGHT_TurnOff();
+        // BACKLIGHT_TurnOff();
+        BACKLIGHT_SetBrightness(gEeprom.BACKLIGHT_MIN);
     }
 }
 
@@ -945,23 +954,23 @@ uint8_t Rssi2Y(uint16_t rssi)
         {
             uint16_t rssi = rssiHistory[(bars>128) ? i >> settings.stepsCount : i];
             
-#ifdef ENABLE_SCAN_RANGES
             uint8_t x;
+#ifdef ENABLE_SCAN_RANGES
             if (gScanRangeStart && bars > 1)
             {
                 // Total width units = (bars - 1) full bars + 2 half bars = bars
                 // First bar: half width, middle bars: full width, last bar: half width
                 // Scale: 128 pixels / (bars - 1) = pixels per full bar
-                uint16_t fullWidth = 128 * 2 / (bars - 1);  // x2 for precision
+                uint16_t fullWidth = (128 << 8) / (bars - 1);  // x256 for precision
                 
                 if (i == 0)
                 {
-                    x = fullWidth / 4;  // half of half (because fullWidth is x2)
+                    x = fullWidth / (2 << 8);  // half of /256 (because fullWidth is x256)
                 }
                 else
                 {
                     // Position = half + (i-1) full bars + current bar
-                    x = fullWidth / 4 + (uint16_t)i * fullWidth / 2;
+                    x = fullWidth / (2 << 8) + (uint16_t)i * fullWidth / (1 << 8);
                     if (i == bars - 1) x = 128;  // Last bar ends at screen edge
                 }
             }
@@ -1038,7 +1047,8 @@ static void DrawStatus()
 static void ShowChannelName(uint32_t f)
 {
     static uint32_t channelF = 0;
-    static char channelName[12]; 
+    static char channelName[12];
+    f = NormalizeScanFrequency(f);
 
     if (isListening)
     {
@@ -1072,6 +1082,7 @@ static void ShowChannelName(uint32_t f)
 
 static void DrawF(uint32_t f)
 {
+    f = NormalizeScanFrequency(f);
     sprintf(String, "%u.%05u", f / 100000, f % 100000);
     UI_PrintStringSmallNormal(String, 8, 127, 0);
 
@@ -1526,7 +1537,7 @@ static void Render()
     ST7565_BlitFullScreen();
 }
 
-bool HandleUserInput()
+static bool HandleUserInput()
 {
     kbd.prev = kbd.current;
     kbd.current = GetKey();
@@ -1588,7 +1599,7 @@ static void UpdateScan()
 {
     Scan();
 
-    if (scanInfo.i < scanInfo.measurementsCount)
+    if (scanInfo.i + 1 < scanInfo.measurementsCount)
     {
         NextScanStep();
         return;
@@ -1748,7 +1759,7 @@ static void Tick()
         Render();
         // For screenshot
         #ifdef ENABLE_FEAT_F4HWN_SCREENSHOT
-            getScreenShot(false);
+            SCREENSHOT_Update(false);
         #endif
         redrawScreen = false;
     }
@@ -1756,6 +1767,8 @@ static void Tick()
 
 void APP_RunSpectrum()
 {
+    settings.backlightState = gEeprom.BACKLIGHT_TIME == 0 ? false : true;
+
     // TX here coz it always? set to active VFO
     vfo = gEeprom.TX_VFO;
 #ifdef ENABLE_FEAT_F4HWN_SPECTRUM
@@ -1779,8 +1792,9 @@ void APP_RunSpectrum()
             gEeprom.CURRENT_STATE = 5;
         #endif
     }
-    else {
+    else
 #endif
+    {
         currentFreq = initialFreq = gTxVfo->pRX->Frequency -
                                     ((GetStepsCount() / 2) * GetScanStep());
         #ifdef ENABLE_FEAT_F4HWN_RESUME_STATE
@@ -1818,4 +1832,6 @@ void APP_RunSpectrum()
     {
         Tick();
     }
+
+    BACKLIGHT_TurnOn();
 }

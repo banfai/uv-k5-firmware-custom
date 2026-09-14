@@ -5,6 +5,8 @@
 
 # ---- STOCK QUANSHENG FEATURES ----
 ENABLE_FMRADIO                  ?= 0
+# Strips the FM channel-memory/MR-mode/auto-scan feature to save flash. Only relevant when ENABLE_FMRADIO=1.
+ENABLE_FMRADIO_MINIMIZED         ?= 0
 ENABLE_UART                     ?= 1
 ENABLE_AIRCOPY                  ?= 0
 ENABLE_NOAA                     ?= 0
@@ -31,6 +33,7 @@ ENABLE_SHOW_CHARGE_LEVEL        ?= 0
 ENABLE_REVERSE_BAT_SYMBOL       ?= 0
 ENABLE_NO_CODE_SCAN_TIMEOUT     ?= 1
 ENABLE_AM_FIX                   ?= 1
+ENABLE_RX_AGC                   ?= 0
 ENABLE_SQUELCH_MORE_SENSITIVE   ?= 1
 ENABLE_FASTER_CHANNEL_SCAN      ?= 1
 ENABLE_RSSI_BAR                 ?= 1
@@ -327,6 +330,9 @@ endif
 ifeq ($(ENABLE_FMRADIO),1)
 	CFLAGS += -DENABLE_FMRADIO
 endif
+ifeq ($(ENABLE_FMRADIO_MINIMIZED),1)
+	CFLAGS += -DENABLE_FMRADIO_MINIMIZED
+endif
 ifeq ($(ENABLE_UART),1)
 	CFLAGS += -DENABLE_UART
 endif
@@ -386,6 +392,9 @@ ifeq ($(ENABLE_AM_FIX),1)
 endif
 ifeq ($(ENABLE_AM_FIX_SHOW_DATA),1)
 	CFLAGS  += -DENABLE_AM_FIX_SHOW_DATA
+endif
+ifeq ($(ENABLE_RX_AGC),1)
+	CFLAGS  += -DENABLE_RX_AGC
 endif
 ifeq ($(ENABLE_SQUELCH_MORE_SENSITIVE),1)
 	CFLAGS  += -DENABLE_SQUELCH_MORE_SENSITIVE

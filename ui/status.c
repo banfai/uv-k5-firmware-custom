@@ -133,14 +133,12 @@ void UI_DisplayStatus()
         UI_PrintStringSmallBufferNormal(str, line + x + 1);
         x += 16;
     #else
-        #ifdef ENABLE_VOICE
-        // VOICE indicator
-        if (gEeprom.VOICE_PROMPT != VOICE_PROMPT_OFF){
-            memcpy(line + x, BITMAP_VoicePrompt, sizeof(BITMAP_VoicePrompt));
-            x1 = x + sizeof(BITMAP_VoicePrompt);
-        }
-        x += sizeof(BITMAP_VoicePrompt);
-        #endif
+        // A "VOICE indicator" status-bar icon used to live here, referencing
+        // BITMAP_VoicePrompt - a bitmap that was never actually defined
+        // anywhere in the codebase (predates this repo's initial commit).
+        // Voice-prompt audio playback itself is unaffected; this only ever
+        // controlled a status icon that could never have compiled under
+        // ENABLE_VOICE until now, so there was never a real icon to keep.
 
         if(!SCANNER_IsScanning()) {
         #ifdef ENABLE_FEAT_F4HWN_RX_TX_TIMER
@@ -155,28 +153,34 @@ void UI_DisplayStatus()
             else
         #endif
             {
-                #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
-                if(gEeprom.MENU_LOCK == true) {
-                    memcpy(line + x + 2, gFontRO, sizeof(gFontRO));
-                }
-                else
-                {
+                #ifdef ENABLE_AIRCOPY
+                if(!gAirCopyBootMode) {
                 #endif
-                    uint8_t dw = (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF) + (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF) * 2;
-                    if(dw == 1 || dw == 3) { // DWR - dual watch + respond
-                        if(gDualWatchActive)
-                            memcpy(line + x + (dw==1?0:2), gFontDWR, sizeof(gFontDWR) - (dw==1?0:5));
-                        else
-                            memcpy(line + x + 3, gFontHold, sizeof(gFontHold));
-                    }
-                    else if(dw == 2) { // XB - crossband
-                        memcpy(line + x + 2, gFontXB, sizeof(gFontXB));
+                    #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
+                    if(gEeprom.MENU_LOCK == true) {
+                        memcpy(line + x + 2, gFontRO, sizeof(gFontRO));
                     }
                     else
                     {
-                        memcpy(line + x + 2, gFontMO, sizeof(gFontMO));
+                    #endif
+                        uint8_t dw = (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF) + (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF) * 2;
+                        if(dw == 1 || dw == 3) { // DWR - dual watch + respond
+                            if(gDualWatchActive)
+                                memcpy(line + x + (dw==1?0:2), gFontDWR, sizeof(gFontDWR) - (dw==1?0:5));
+                            else
+                                memcpy(line + x + 3, gFontHold, sizeof(gFontHold));
+                        }
+                        else if(dw == 2) { // XB - crossband
+                            memcpy(line + x + 2, gFontXB, sizeof(gFontXB));
+                        }
+                        else
+                        {
+                            memcpy(line + x + 2, gFontMO, sizeof(gFontMO));
+                        }
+                    #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
                     }
-                #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
+                    #endif
+                #ifdef ENABLE_AIRCOPY
                 }
                 #endif
             }
@@ -195,15 +199,22 @@ void UI_DisplayStatus()
 
 #ifdef ENABLE_FEAT_F4HWN
     // PTT indicator
-    if (gSetting_set_ptt_session) {
-        memcpy(line + x, gFontPttOnePush, sizeof(gFontPttOnePush));
-        x1 = x + sizeof(gFontPttOnePush) + 1;
+    #ifdef ENABLE_AIRCOPY
+    if(!gAirCopyBootMode) {
+    #endif
+        if (gSetting_set_ptt_session) {
+            memcpy(line + x, gFontPttOnePush, sizeof(gFontPttOnePush));
+            x1 = x + sizeof(gFontPttOnePush) + 1;
+        }
+        else
+        {
+            memcpy(line + x, gFontPttClassic, sizeof(gFontPttClassic));
+            x1 = x + sizeof(gFontPttClassic) + 1;       
+        }
+    #ifdef ENABLE_AIRCOPY
     }
-    else
-    {
-        memcpy(line + x, gFontPttClassic, sizeof(gFontPttClassic));
-        x1 = x + sizeof(gFontPttClassic) + 1;       
-    }
+    #endif
+    
     x += sizeof(gFontPttClassic) + 3;
 #endif
 
@@ -218,15 +229,8 @@ void UI_DisplayStatus()
         size = sizeof(gFontKeyLock);
     }
     else if (gWasFKeyPressed) {
-        #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
-        if (!gEeprom.MENU_LOCK) {
-            src = gFontF;
-            size = sizeof(gFontF);
-        }
-        #else
         src = gFontF;
         size = sizeof(gFontF);
-        #endif
     }
     #ifdef ENABLE_FEAT_F4HWN
         else if (gMute) {

@@ -168,6 +168,9 @@ void SETTINGS_InitEEPROM(void)
             gEeprom.S9_LEVEL = 76;
         }
     #endif
+    #ifdef ENABLE_RX_AGC
+        gEeprom.RX_AGC = (Data[3] < RX_AGC_LEN) ? Data[3] : RX_AGC_SLOW;
+    #endif
 
     // 0EA8..0EAF
     EEPROM_ReadBuffer(0x0EA8, Data, 8);
@@ -689,6 +692,9 @@ void SETTINGS_SaveSettings(void)
     State[1] = gEeprom.S0_LEVEL;
     State[2] = gEeprom.S9_LEVEL;
 #endif
+#ifdef ENABLE_RX_AGC
+    State[3] = gEeprom.RX_AGC;
+#endif
     EEPROM_WriteBuffer(0x0EA0, State);
 
 
@@ -911,9 +917,12 @@ void SETTINGS_SaveChannelName(uint8_t channel, const char * name)
 
 void SETTINGS_UpdateChannel(uint8_t channel, const VFO_Info_t *pVFO, bool keep, bool check, bool save)
 {
-#ifdef ENABLE_NOAA
-    if (!IS_NOAA_CHANNEL(channel))
-#endif
+    // gMR_ChannelAttributes[] only has FREQ_CHANNEL_LAST+1 (207) entries, covering
+    // MR+FREQ channels; NOAA channels (207..216) and anything beyond are handled
+    // elsewhere. This bound must stay unconditional and independent of ENABLE_NOAA,
+    // or an out-of-range channel value (this is a uint8_t, so up to 255) would
+    // write past the array.
+    if (channel <= FREQ_CHANNEL_LAST)
     {
         uint8_t  state[8];
         ChannelAttributes_t  att = {

@@ -102,10 +102,18 @@ bool RADIO_CheckValidChannel(uint16_t channel, bool checkScanList, uint8_t scanL
         return false;
     }
 
-    //return true;
+    // What happens when scanList equals 0 or 4? Most likely reading a 0 value, which means channel number 0 will be skipped.
+    if(scanList == 0 || scanList == 4) // the proposed fix
+        return true;
 
-    // I don't understand what this code is for...
-    
+    // SCANLIST_PRIORITY_CH1/2 only have entries for the 3 numbered scan
+    // lists (index scanList-1, valid for scanList 1..3). scanList==0 ("not
+    // in any list") and scanList==4 ("in any list") have no corresponding
+    // priority-channel pair, so scanList-1 would index out of bounds
+    // (-1, or 3 on a 3-entry array) - skip the priority check for those.
+    if (scanList < 1 || scanList > 3)
+        return true;
+
     const uint8_t PriorityCh1 = gEeprom.SCANLIST_PRIORITY_CH1[scanList - 1];
     const uint8_t PriorityCh2 = gEeprom.SCANLIST_PRIORITY_CH2[scanList - 1];
 
@@ -155,6 +163,32 @@ void RADIO_InitInfo(VFO_Info_t *pInfo, const uint8_t ChannelSave, const uint32_t
         pInfo->Modulation = MODULATION_FM;
 
     RADIO_ConfigureSquelchAndOutputPower(pInfo);
+}
+
+// Shared by RADIO_ConfigureChannel() for its RX/TX freq_config code validation,
+// which repeated this same CodeType-bound-check switch for both.
+static void RADIO_ValidateCode(FREQ_Config_t *pConfig, uint8_t code)
+{
+    switch (pConfig->CodeType)
+    {
+        default:
+        case CODE_TYPE_OFF:
+            pConfig->CodeType = CODE_TYPE_OFF;
+            code = 0;
+            break;
+
+        case CODE_TYPE_CONTINUOUS_TONE:
+            if (code > (ARRAY_SIZE(CTCSS_Options) - 1))
+                code = 0;
+            break;
+
+        case CODE_TYPE_DIGITAL:
+        case CODE_TYPE_REVERSE_DIGITAL:
+            if (code > (ARRAY_SIZE(DCS_Options) - 1))
+                code = 0;
+            break;
+    }
+    pConfig->Code = code;
 }
 
 void RADIO_ConfigureChannel(const unsigned int VFO, const unsigned int configure)
@@ -283,49 +317,8 @@ void RADIO_ConfigureChannel(const unsigned int VFO, const unsigned int configure
         pVfo->freq_config_RX.CodeType = (data[2] >> 0) & 0x0F;
         pVfo->freq_config_TX.CodeType = (data[2] >> 4) & 0x0F;
 
-        tmp = data[0];
-        switch (pVfo->freq_config_RX.CodeType)
-        {
-            default:
-            case CODE_TYPE_OFF:
-                pVfo->freq_config_RX.CodeType = CODE_TYPE_OFF;
-                tmp = 0;
-                break;
-
-            case CODE_TYPE_CONTINUOUS_TONE:
-                if (tmp > (ARRAY_SIZE(CTCSS_Options) - 1))
-                    tmp = 0;
-                break;
-
-            case CODE_TYPE_DIGITAL:
-            case CODE_TYPE_REVERSE_DIGITAL:
-                if (tmp > (ARRAY_SIZE(DCS_Options) - 1))
-                    tmp = 0;
-                break;
-        }
-        pVfo->freq_config_RX.Code = tmp;
-
-        tmp = data[1];
-        switch (pVfo->freq_config_TX.CodeType)
-        {
-            default:
-            case CODE_TYPE_OFF:
-                pVfo->freq_config_TX.CodeType = CODE_TYPE_OFF;
-                tmp = 0;
-                break;
-
-            case CODE_TYPE_CONTINUOUS_TONE:
-                if (tmp > (ARRAY_SIZE(CTCSS_Options) - 1))
-                    tmp = 0;
-                break;
-
-            case CODE_TYPE_DIGITAL:
-            case CODE_TYPE_REVERSE_DIGITAL:
-                if (tmp > (ARRAY_SIZE(DCS_Options) - 1))
-                    tmp = 0;
-                break;
-        }
-        pVfo->freq_config_TX.Code = tmp;
+        RADIO_ValidateCode(&pVfo->freq_config_RX, data[0]);
+        RADIO_ValidateCode(&pVfo->freq_config_TX, data[1]);
 
         if (data[4] == 0xFF)
         {
@@ -395,7 +388,10 @@ void RADIO_ConfigureChannel(const unsigned int VFO, const unsigned int configure
 
     pVfo->freq_config_RX.Frequency = frequency;
 
-    if (frequency >= frequencyBandTable[BAND2_108MHz].upper && frequency < frequencyBandTable[BAND2_108MHz].upper)
+    // was ".upper && < .upper" (always false, dead code) - should bound the
+    // whole BAND2_108MHz (receive-only airband) range, matching the
+    // ">= lower && < upper" convention used elsewhere in this file.
+    if (frequency >= frequencyBandTable[BAND2_108MHz].lower && frequency < frequencyBandTable[BAND2_108MHz].upper)
         pVfo->TX_OFFSET_FREQUENCY_DIRECTION = TX_OFFSET_FREQUENCY_DIRECTION_OFF;
     else if (!IS_MR_CHANNEL(channel))
         pVfo->TX_OFFSET_FREQUENCY = FREQUENCY_RoundToStep(pVfo->TX_OFFSET_FREQUENCY, pVfo->StepFrequency);
@@ -682,10 +678,11 @@ void RADIO_SelectVfos(void)
     RADIO_SelectCurrentVfo();
 }
 
-void RADIO_SetupRegisters(bool switchToForeground)
+// Shared by RADIO_SetupRegisters()/RADIO_SetTxParameters(), which both ran this
+// same narrower-mode/mute/GPIO/filter-bandwidth sequence against their own VFO
+// and GPIO pin.
+static void RADIO_ApplyBandwidthAndMute(BK4819_FilterBandwidth_t Bandwidth, BK4819_GPIO_PIN_t GpioPin)
 {
-    BK4819_FilterBandwidth_t Bandwidth = gRxVfo->CHANNEL_BANDWIDTH;
-
     #ifdef ENABLE_FEAT_F4HWN_NARROWER
         if(Bandwidth == BK4819_FILTER_BW_NARROW && gSetting_set_nfm == 1)
         {
@@ -697,7 +694,7 @@ void RADIO_SetupRegisters(bool switchToForeground)
 
     gEnableSpeaker = false;
 
-    BK4819_ToggleGpioOut(BK4819_GPIO6_PIN2_GREEN, false);
+    BK4819_ToggleGpioOut(GpioPin, false);
 
     switch (Bandwidth)
     {
@@ -708,13 +705,17 @@ void RADIO_SetupRegisters(bool switchToForeground)
         case BK4819_FILTER_BW_NARROW:
         case BK4819_FILTER_BW_NARROWER:
             #ifdef ENABLE_AM_FIX
-//              BK4819_SetFilterBandwidth(Bandwidth, gRxVfo->Modulation == MODULATION_AM && gSetting_AM_fix);
                 BK4819_SetFilterBandwidth(Bandwidth, true);
             #else
                 BK4819_SetFilterBandwidth(Bandwidth, false);
             #endif
             break;
     }
+}
+
+void RADIO_SetupRegisters(bool switchToForeground)
+{
+    RADIO_ApplyBandwidthAndMute(gRxVfo->CHANNEL_BANDWIDTH, BK4819_GPIO6_PIN2_GREEN);
 
     BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, false);
 
@@ -921,37 +922,7 @@ void RADIO_SetupRegisters(bool switchToForeground)
 
 void RADIO_SetTxParameters(void)
 {
-    BK4819_FilterBandwidth_t Bandwidth = gCurrentVfo->CHANNEL_BANDWIDTH;
-
-    #ifdef ENABLE_FEAT_F4HWN_NARROWER
-        if(Bandwidth == BK4819_FILTER_BW_NARROW && gSetting_set_nfm == 1)
-        {
-            Bandwidth = BK4819_FILTER_BW_NARROWER;
-        }
-    #endif
-
-    AUDIO_AudioPathOff();
-
-    gEnableSpeaker = false;
-
-    BK4819_ToggleGpioOut(BK4819_GPIO0_PIN28_RX_ENABLE, false);
-
-    switch (Bandwidth)
-    {
-        default:
-            Bandwidth = BK4819_FILTER_BW_WIDE;
-            [[fallthrough]];
-        case BK4819_FILTER_BW_WIDE:
-        case BK4819_FILTER_BW_NARROW:
-        case BK4819_FILTER_BW_NARROWER:
-            #ifdef ENABLE_AM_FIX
-//              BK4819_SetFilterBandwidth(Bandwidth, gCurrentVfo->Modulation == MODULATION_AM && gSetting_AM_fix);
-                BK4819_SetFilterBandwidth(Bandwidth, true);
-            #else
-                BK4819_SetFilterBandwidth(Bandwidth, false);
-            #endif
-            break;
-    }
+    RADIO_ApplyBandwidthAndMute(gCurrentVfo->CHANNEL_BANDWIDTH, BK4819_GPIO0_PIN28_RX_ENABLE);
 
     BK4819_SetFrequency(gCurrentVfo->pTX->Frequency);
 
@@ -1034,8 +1005,13 @@ void RADIO_SetupAGC(bool listeningAM, bool disable)
 
 
     if(!listeningAM) { // if not actively listening AM we don't need any AM specific regulation
+#ifdef ENABLE_RX_AGC
+        BK4819_SetAGC(!disable && gEeprom.RX_AGC != RX_AGC_OFF);
+        BK4819_InitAGC(gEeprom.RX_AGC, MODULATION_FM);
+#else
         BK4819_SetAGC(!disable);
         BK4819_InitAGC(false);
+#endif
     }
     else {
 #ifdef ENABLE_AM_FIX
@@ -1046,8 +1022,13 @@ void RADIO_SetupAGC(bool listeningAM, bool disable)
         else
 #endif
         {
+#ifdef ENABLE_RX_AGC
+            BK4819_SetAGC(!disable && gEeprom.RX_AGC != RX_AGC_OFF);
+            BK4819_InitAGC(gEeprom.RX_AGC, MODULATION_AM);
+#else
             BK4819_SetAGC(!disable);
             BK4819_InitAGC(true);
+#endif
         }
     }
 }
@@ -1202,17 +1183,19 @@ void RADIO_PrepareTX(void)
 
 void RADIO_SendCssTail(void)
 {
-    switch (gCurrentVfo->pTX->CodeType) {
-    case CODE_TYPE_DIGITAL:
-    case CODE_TYPE_REVERSE_DIGITAL:
-        BK4819_PlayCDCSSTail();
-        break;
-    default:
-        BK4819_PlayCTCSSTail();
-        break;
-    }
+    if (gEeprom.TAIL_TONE_ELIMINATION) {
+        switch (gCurrentVfo->pTX->CodeType) {
+        case CODE_TYPE_DIGITAL:
+        case CODE_TYPE_REVERSE_DIGITAL:
+            BK4819_PlayCDCSSTail();
+            break;
+        default:
+            BK4819_PlayCTCSSTail();
+            break;
+        }
 
-    SYSTEM_DelayMs(200);
+        SYSTEM_DelayMs(200);
+    }
 }
 
 void RADIO_SendEndOfTransmission(void)
@@ -1221,8 +1204,7 @@ void RADIO_SendEndOfTransmission(void)
     DTMF_SendEndOfTransmission();
 
     // send the CTCSS/DCS tail tone - allows the receivers to mute the usual FM squelch tail/crash
-    if(gEeprom.TAIL_TONE_ELIMINATION)
-        RADIO_SendCssTail();
+    RADIO_SendCssTail();
     RADIO_SetupRegisters(false);
 }
 
@@ -1232,7 +1214,6 @@ void RADIO_PrepareCssTX(void)
 
     SYSTEM_DelayMs(200);
 
-    if(gEeprom.TAIL_TONE_ELIMINATION)
-        RADIO_SendCssTail();
+    RADIO_SendCssTail();
     RADIO_SetupRegisters(true);
 }
